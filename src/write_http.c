@@ -67,6 +67,7 @@ struct wh_callback_s {
 #define WH_FORMAT_COMMAND 0
 #define WH_FORMAT_JSON 1
 #define WH_FORMAT_KAIROSDB 2
+#define WH_FORMAT_LIBRATO_JSON 3
   int format;
   bool send_metrics;
   bool send_notifications;
@@ -113,7 +114,8 @@ static void wh_reset_buffer(wh_callback_t *cb) /* {{{ */
   cb->send_buffer_fill = 0;
   cb->send_buffer_init_time = cdtime();
 
-  if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB) {
+  if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB ||
+      cb->format == WH_FORMAT_LIBRATO_JSON) {
     format_json_initialize(cb->send_buffer, &cb->send_buffer_fill,
                            &cb->send_buffer_free);
   }
@@ -165,7 +167,8 @@ static int wh_callback_init(wh_callback_t *cb) /* {{{ */
   curl_easy_setopt(cb->curl, CURLOPT_USERAGENT, COLLECTD_USERAGENT);
 
   cb->headers = curl_slist_append(cb->headers, "Accept:  */*");
-  if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB)
+  if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB ||
+      cb->format == WH_FORMAT_LIBRATO_JSON)
     cb->headers =
         curl_slist_append(cb->headers, "Content-Type: application/json");
   else
@@ -248,7 +251,8 @@ static int wh_flush_nolock(cdtime_t timeout, wh_callback_t *cb) /* {{{ */
 
     status = wh_post_nolock(cb, cb->send_buffer);
     wh_reset_buffer(cb);
-  } else if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB) {
+  } else if (cb->format == WH_FORMAT_JSON || cb->format == WH_FORMAT_KAIROSDB ||
+      cb->format == WH_FORMAT_LIBRATO_JSON) {
     if (cb->send_buffer_fill <= 2) {
       cb->send_buffer_init_time = cdtime();
       return 0;
@@ -530,6 +534,8 @@ static int wh_write(const data_set_t *ds, const value_list_t *vl, /* {{{ */
   case WH_FORMAT_KAIROSDB:
     status = wh_write_kairosdb(ds, vl, cb);
     break;
+  case WH_FORMAT_KAIROSDB:
+    status = wh_write_librato_json(ds, vl, cb);
   default:
     status = wh_write_command(ds, vl, cb);
     break;
@@ -586,6 +592,8 @@ static int config_set_format(wh_callback_t *cb, /* {{{ */
     cb->format = WH_FORMAT_JSON;
   else if (strcasecmp("KAIROSDB", string) == 0)
     cb->format = WH_FORMAT_KAIROSDB;
+  else if (strcasecmp("LIBRATO_JSON", string) == 0)
+    cb->format = WH_FORMAT_LIBRATO_JSON;
   else {
     ERROR("write_http plugin: Invalid format string: %s", string);
     return -1;
